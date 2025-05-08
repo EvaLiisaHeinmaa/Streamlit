@@ -89,6 +89,8 @@ def import_data():
 
         # --- Debugging: Print columns of the raw data ---
         st.write("Columns in raw data (df):", df.columns.tolist())
+        st.write("Sample data (first 5 rows):")
+        st.dataframe(df.head())
         # --- End Debugging ---
         
         return df
@@ -118,109 +120,9 @@ def import_geojson():
         st.error(f"Error loading GeoJSON file: {e}")
         return None
 
-def calculate_natural_growth(df):
-    # --- Debugging: Check if 'Mehed Loomulik iive' and 'Naised Loomulik iive' exist ---
-    if 'Mehed Loomulik iive' not in df.columns or 'Naised Loomulik iive' not in df.columns:
-        st.error("Required columns ('Mehed Loomulik iive' or 'Naised Loomulik iive') are missing for natural growth calculation.")
-        st.write("Available columns:", df.columns.tolist())
-        return None
-
-    # --- End Debugging ---
+def process_data_and_calculate_natural_growth(df):
+    """Process the data from Statistics Estonia and calculate natural growth."""
+    # First, examine the actual column names to determine the structure
+    st.write("Data structure analysis:")
     
-    # Filter for the 'Total' sex (Sugu == 1)
-    df_total = df[df['Sugu'] == 1].copy()  # Use .copy() to avoid SettingWithCopyWarning
-    
-    # Calculate the total natural growth
-    df_total.loc[:, "Loomulik iive"] = df_total["Mehed Loomulik iive"] + df_total["Naised Loomulik iive"]
-    
-    return df_total
-
-def get_data_for_year(df, year):
-    if df is not None:
-        year_data = df[df.Aasta == year]
-        return year_data
-    return None
-
-def create_plot(gdf, merged_data, selected_year): # Changed: Pass merged_data directly
-    if gdf is None or merged_data is None:
-        return None
-    
-    # --- Debugging: Print columns of the merged data ---
-    st.write("Columns in Merged Data:", merged_data.columns.tolist())
-    # --- End Debugging ---
-
-    # Check if 'Loomulik iive' exists in merged_data
-    if 'Loomulik iive' not in merged_data.columns:
-        st.error("The column 'Loomulik iive' is not present in the merged data.")
-        st.write("Please check the merge operation and column names.")
-        return None
-    
-    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
-    
-    merged_data.plot(column='Loomulik iive', 
-                     ax=ax,
-                     legend=True,
-                     cmap='viridis',
-                     legend_kwds={'label': "Loomulik iive"})
-    
-    plt.title(f'Loomulik iive maakonniti aastal {selected_year}')
-    plt.axis('off')
-    plt.tight_layout()
-    
-    return fig
-
-# Main app flow
-df = import_data()
-gdf = import_geojson()
-
-if df is not None and gdf is not None:
-    # Calculate natural growth
-    df_with_growth = calculate_natural_growth(df)
-    
-    if df_with_growth is None:
-        st.error("Failed to calculate natural growth.  Cannot proceed.")
-        st.stop()  # Stop execution if calculation fails
-
-    # Display some basic info about the data
-    st.subheader("Data Overview")
-    st.write(f"Data contains years from {df_with_growth['Aasta'].min()} to {df_with_growth['Aasta'].max()}")
-    
-    # Show GeoJSON info
-    st.write(f"Geographic data loaded with {len(gdf)} counties")
-    
-    # Year selection
-    years = sorted(df_with_growth['Aasta'].unique())
-    selected_year = st.selectbox("Select Year", years, index=len(years)-1)  # Default to latest year
-    
-    # Get data for selected year
-    data_year = get_data_for_year(df_with_growth, selected_year)
-
-    # Merge the data with the geodataframe
-    merged_data = gdf.merge(data_year, left_on='MNIMI', right_on='Maakond', how='left')
-
-    # Create and display the plot
-    fig = create_plot(gdf, merged_data, selected_year) # Changed: Pass merged_data
-    if fig:
-        st.pyplot(fig)
-    else:
-        st.warning("Unable to create plot with the current data.")
-    
-    # Show the data for the selected year
-    with st.expander("View Data Table"):
-        st.dataframe(data_year)
-    
-    # Add download button for the selected year's data
-    csv = data_year.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="Download data as CSV",
-        data=csv,
-        file_name=f"population_growth_{selected_year}.csv",
-        mime="text/csv"
-    )
-else:
-    st.warning("Please make sure all data files are available before proceeding.")
-    
-    # Debug information
-    if gdf is None:
-        st.info(f"Current working directory: {os.getcwd()}")
-        st.info(f"Files in directory: {os.listdir('.')}")
+    # Check if we have sex
