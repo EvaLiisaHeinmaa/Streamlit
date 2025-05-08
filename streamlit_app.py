@@ -6,11 +6,11 @@ import requests
 import json
 from io import StringIO
 
-# API and GeoJSON path
+# --- Constants ---
 STATISTIKAAMETI_API_URL = "https://andmed.stat.ee/api/v1/et/stat/RV032"
-GEOJSON_FILE = "maakonnad.geojson"
+GEOJSON_URL = "https://gist.githubusercontent.com/nutiteq/1ab8f24f9a6ad2bb47da/raw/maakonnad.json"
 
-# JSON Payload
+# --- JSON payload to query the API ---
 JSON_PAYLOAD_STR = """{
   "query": [
     {
@@ -40,30 +40,32 @@ JSON_PAYLOAD_STR = """{
   }
 }"""
 
+# --- Functions ---
 @st.cache_data
 def import_data():
     headers = {'Content-Type': 'application/json'}
     payload = json.loads(JSON_PAYLOAD_STR)
     response = requests.post(STATISTIKAAMETI_API_URL, json=payload, headers=headers)
-    
     if response.status_code == 200:
         text = response.content.decode('utf-8-sig')
-        df = pd.read_csv(StringIO(text))
-        return df
+        return pd.read_csv(StringIO(text))
     else:
-        st.error(f"API request failed with code {response.status_code}")
+        st.error(f"Failed to load data: {response.status_code}")
         return pd.DataFrame()
 
 @st.cache_data
 def import_geojson():
-    return gpd.read_file(GEOJSON_FILE)
+    return gpd.read_file(GEOJSON_URL)
 
-def merge_data(df, gdf, year):
-    year_data = df[df['Aasta'] == int(year)]
-    grouped = year_data.groupby('Maakond')['Loomulik iive'].sum().reset_index()
-    grouped['Maakond'] = grouped['Maakond'].astype(str)
-    gdf['Maakond'] = gdf['Maakond'].astype(str)
-    merged = gdf.merge(grouped, on='Maakond')
+def merge_data(api_df, geo_df, year):
+    # Filter and group API data
+    year_df = api_df[api_df["Aasta"] == int(year)]
+    grouped = year_df.groupby("Maakond")["Loomulik iive"].sum().reset_index()
+    grouped["ADM1_NO"] = grouped["Maakond"].astype(int)
+
+    # Prepare GeoJSON and merge
+    geo_df["ADM1_NO"] = geo_df["ADM1_NO"].astype(int)
+    merged = geo_df.merge(grouped, on="ADM1_NO")
     return merged
 
 def plot_map(gdf, year):
@@ -74,10 +76,9 @@ def plot_map(gdf, year):
     ax.axis('off')
     st.pyplot(fig)
 
-# Streamlit App
+# --- Streamlit UI ---
 st.title("Eesti Statistika: Loomulik iive Maakonniti")
 
-# Load data
 df = import_data()
 gdf = import_geojson()
 
