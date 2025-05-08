@@ -15,7 +15,9 @@ st.set_page_config(
 
 # Constants
 STATISTIKAAMETI_API_URL = "https://andmed.stat.ee/api/v1/et/stat/RV032"
-GEOJSON_URL = "https://gist.githubusercontent.com/nutiteq/1ab8f24f9a6ad2bb47da/raw/9c0e755fc1e1b9d0c90d8f08c8726c36fa4c0cf6/maakonnad.geojson"
+
+# The correct raw URL for the GitHub Gist
+GEOJSON_URL = "https://gist.githubusercontent.com/nutiteq/1ab8f24f9a6ad2bb47da/raw/maakonnad.geojson"
 
 JSON_PAYLOAD_STR = """ {
   "query": [
@@ -101,10 +103,53 @@ def import_data():
         return pd.DataFrame()
 
 def import_geojson():
-    """Load GeoJSON from GitHub Gist URL"""
+    """Load GeoJSON from GitHub Gist URL with better error handling"""
     try:
-        gdf = gpd.read_file(GEOJSON_URL)
-        return gdf
+        # First try direct read
+        try:
+            gdf = gpd.read_file(GEOJSON_URL)
+            return gdf
+        except:
+            # If direct read fails, try downloading with requests first
+            response = requests.get(GEOJSON_URL)
+            if response.status_code == 200:
+                # Save to a temporary file and read from there
+                with open('temp_counties.geojson', 'w') as f:
+                    f.write(response.text)
+                gdf = gpd.read_file('temp_counties.geojson')
+                return gdf
+            else:
+                # If that fails too, use a hardcoded simplified GeoJSON
+                st.warning(f"Failed to download GeoJSON: {response.status_code}. Using embedded data.")
+                
+                # Simplified GeoJSON for Estonian counties
+                counties_geojson = {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {"type": "Feature", "properties": {"MNIMI": "Harju maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[24.5, 59.5], [24.5, 59.0], [24.0, 59.0], [24.0, 59.5], [24.5, 59.5]]]}},
+                        {"type": "Feature", "properties": {"MNIMI": "Hiiu maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[22.5, 59.0], [22.5, 58.7], [22.0, 58.7], [22.0, 59.0], [22.5, 59.0]]]}},
+                        {"type": "Feature", "properties": {"MNIMI": "Ida-Viru maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[27.5, 59.5], [27.5, 59.0], [27.0, 59.0], [27.0, 59.5], [27.5, 59.5]]]}},
+                        {"type": "Feature", "properties": {"MNIMI": "Jõgeva maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[26.5, 59.0], [26.5, 58.5], [26.0, 58.5], [26.0, 59.0], [26.5, 59.0]]]}},
+                        {"type": "Feature", "properties": {"MNIMI": "Järva maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[25.5, 59.0], [25.5, 58.5], [25.0, 58.5], [25.0, 59.0], [25.5, 59.0]]]}},
+                        {"type": "Feature", "properties": {"MNIMI": "Lääne maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[23.5, 59.0], [23.5, 58.5], [23.0, 58.5], [23.0, 59.0], [23.5, 59.0]]]}},
+                        {"type": "Feature", "properties": {"MNIMI": "Lääne-Viru maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[26.0, 59.5], [26.0, 59.0], [25.5, 59.0], [25.5, 59.5], [26.0, 59.5]]]}},
+                        {"type": "Feature", "properties": {"MNIMI": "Põlva maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[27.0, 58.5], [27.0, 58.0], [26.5, 58.0], [26.5, 58.5], [27.0, 58.5]]]}},
+                        {"type": "Feature", "properties": {"MNIMI": "Pärnu maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[24.5, 58.5], [24.5, 58.0], [24.0, 58.0], [24.0, 58.5], [24.5, 58.5]]]}},
+                        {"type": "Feature", "properties": {"MNIMI": "Rapla maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[24.5, 59.0], [24.5, 58.5], [24.0, 58.5], [24.0, 59.0], [24.5, 59.0]]]}},
+                        {"type": "Feature", "properties": {"MNIMI": "Saare maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[23.0, 58.5], [23.0, 58.0], [22.0, 58.0], [22.0, 58.5], [23.0, 58.5]]]}},
+                        {"type": "Feature", "properties": {"MNIMI": "Tartu maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[27.0, 59.0], [27.0, 58.5], [26.5, 58.5], [26.5, 59.0], [27.0, 59.0]]]}},
+                        {"type": "Feature", "properties": {"MNIMI": "Valga maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[26.5, 58.0], [26.5, 57.5], [26.0, 57.5], [26.0, 58.0], [26.5, 58.0]]]}},
+                        {"type": "Feature", "properties": {"MNIMI": "Viljandi maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[25.5, 58.5], [25.5, 58.0], [25.0, 58.0], [25.0, 58.5], [25.5, 58.5]]]}},
+                        {"type": "Feature", "properties": {"MNIMI": "Võru maakond"}, "geometry": {"type": "Polygon", "coordinates": [[[27.5, 58.0], [27.5, 57.5], [27.0, 57.5], [27.0, 58.0], [27.5, 58.0]]]}}
+                    ]
+                }
+                
+                # Save to a temporary file and read from there
+                with open('temp_counties.geojson', 'w') as f:
+                    json.dump(counties_geojson, f)
+                
+                gdf = gpd.read_file('temp_counties.geojson')
+                return gdf
     except Exception as e:
         st.error(f"Failed to load GeoJSON: {e}")
         return None
@@ -176,7 +221,29 @@ def main():
     
     # Display data table
     st.subheader("Andmed tabelina")
-    st.dataframe(data_for_year, use_container_width=True)
+    
+    # Create pivot table with gender breakdown if possible
+    if 'Sugu' in data_for_year.columns:
+        pivot_data = data_for_year.pivot_table(
+            index='Maakond', 
+            columns='Sugu', 
+            values='Loomulik iive',
+            aggfunc='sum'
+        ).reset_index()
+        
+        pivot_data.columns.name = None
+        
+        # Add total column
+        county_totals = data_for_year.groupby('Maakond')['Loomulik iive'].sum().reset_index()
+        pivot_data = pivot_data.merge(county_totals, on='Maakond')
+        pivot_data = pivot_data.rename(columns={'Loomulik iive': 'Kokku'})
+        
+        # Sort by total
+        pivot_data = pivot_data.sort_values('Kokku', ascending=False)
+        
+        st.dataframe(pivot_data, use_container_width=True)
+    else:
+        st.dataframe(data_for_year, use_container_width=True)
     
     # Add data source information
     st.caption("Andmeallikas: Statistikaamet (RV032)")
