@@ -1,68 +1,112 @@
-import backend as be
-import ui_helpers as uih
-import streamlit as st
-import matplotlib
-import plotly.express as px
+import requests
+import pandas as pd
+from io import StringIO
+import json
+import geopandas as gpd
+import matplotlib.pyplot as plt
 
-st.header('How did your County Change During Covid?')
+STATISTIKAAMETI_API_URL = "https://andmed.stat.ee/api/v1/et/stat/RV032"
 
-# Let the user select a (state, county, demographic) combination to get data on
-# State and County dropdowns appear side by side
-state_col, county_col = st.columns(2)
-with state_col:
-    state_name = st.selectbox("State:", be.get_state_names(), index=4) # 4 = California
-    county_name_index = uih.get_county_name_index(state_name)
-with county_col:
-    county_name = st.selectbox("County:", be.get_county_names(state_name), index=county_name_index)
+JSON_PAYLOAD_STR =""" {
+  "query": [
+    {
+      "code": "Aasta",
+      "selection": {
+        "filter": "item",
+        "values": [
+          "2014",
+          "2015",
+          "2016",
+          "2017",
+          "2018",
+          "2019",
+          "2020",
+          "2021",
+          "2022",
+          "2023"
+        ]
+      }
+    },
+    {
+      "code": "Maakond",
+      "selection": {
+        "filter": "item",
+        "values": [
+          "39",
+          "44",
+          "49",
+          "51",
+          "57",
+          "59",
+          "65",
+          "67",
+          "70",
+          "74",
+          "78",
+          "82",
+          "84",
+          "86"
+        ]
+      }
+    },
+    {
+      "code": "Sugu",
+      "selection": {
+        "filter": "item",
+        "values": [
+          "2",
+          "3"
+        ]
+      }
+    }
+  ],
+  "response": {
+    "format": "csv"
+  }
+}
+"""
+geojson = "maakonnad.geojson"
+    
 
-# Demographic statistic dropdown appears below
-var = st.selectbox("Demographic:", be.get_unique_census_labels()) # Something like "Total Population"
+def import_data():
+    headers = {
+        'Content-Type': 'application/json'  # or application/x-www-form-urlencoded if needed
+    }
+    
+    parsed_payload = json.loads(JSON_PAYLOAD_STR)
+    
+    
+    response = requests.post(STATISTIKAAMETI_API_URL, json=parsed_payload, headers=headers)
+    
+    if response.status_code == 200:
+        print("Request successful.")       
+        text = response.content.decode('utf-8-sig')
+        df = pd.read_csv(StringIO(text))
 
-# Now display the data the user requested 
-tab1, tab2, tab3, tab4 = st.tabs(["📈 Details", "🥇 Rankings", "🗺️ Map", "ℹ️ About"])
+    else:
+        print(f"Failed with status code: {response.status_code}")
+        print(response.text)
+    return df
 
-# Tab 1: Time series data on selected county / demographic combination
-with tab1:
-    st.write(f"All data for **{county_name}, {state_name}** for **{var}**.")
-    df = be.get_census_data(state_name, county_name, var)
+def import_geojson():
+    gdf = gpd.read_file(geojson)
+    return gdf
 
-    col1, col2 = st.columns(2)
-    with col1:
-        # Line graph of raw data. Set y-axis formatter to use commas
-        fig = df.plot(x='YEAR', y=var, style='-o').figure
-        fig.gca().get_yaxis().set_major_formatter(
-            matplotlib.ticker.StrMethodFormatter('{x:,.0f}')
-        )
-        st.pyplot(fig)
-    with col2:
-        # Bar plot showing % change
-        df['Percent Change'] = df[var].pct_change() * 100
-        st.pyplot(df.plot(kind='bar', x='YEAR', y='Percent Change').figure)
+def get_data_for_year(df, year):
+    year_data = df[df.Aasta==year]
+    return year_data
 
-# Tab 2: Ranking of all counties for that demographic (2019-2021)
-with tab2:
-    ranking_df = be.get_ranking_df(var)
-    ranking_text = be.get_ranking_text(state_name, county_name, var, ranking_df)
-
-    st.write(ranking_text)
-    # The styling here are things like the gradient on the "Percent Change" column
-    ranking_df = ranking_df.style.pipe(uih.apply_styles, state_name, county_name)
-    st.dataframe(ranking_df)
-
-# Tab 3: Choropleth map
-with tab3:
-    st.write("Data is provided only for counties with a population of at least 65,000.")          
-    fig = px.choropleth(be.get_mapping_df(var), geojson=be.county_map, locations='FIPS', color='Quartile',
-                        color_discrete_sequence = ['#ffffcc','#a1dab4','#41b6c4','#225ea8'],
-                        scope="usa",
-                        hover_name='County',
-                        hover_data={'FIPS': False, 'Percent Change': True},
-                        labels={'Quartile':'Percent Change', 'FIPS': 'NAME'})
-    st.plotly_chart(fig)
-
-# Tab 4: Info about the data / app
-with tab4:
-    text = open('about.md').read()
-    st.write(text)
-
-st.write("Created by [Ari Lamstein](https://www.arilamstein.com). View the code [here](https://github.com/arilamstein/censusdis-streamlit).")
+def plot(df):
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+    
+    # Replace 'value_column' with the column name you want to visualize
+    df.plot(column='Loomulik iive', 
+                     ax=ax,
+                     legend=True,
+                     cmap='viridis',  # Choose a colormap
+                     legend_kwds={'label': "Loomulik iive"})
+    
+    plt.title('Loomulik iive maakonniti aastal 2023')
+    plt.axis('off')  # Hide axis
+    plt.tight_layout()
+    plt.show()
