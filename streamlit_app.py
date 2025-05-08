@@ -277,3 +277,9 @@ with st.expander("Debug Information"):
         st.write(f"Data Types: {df.dtypes}")
         st.write("Data Sample:")
         st.dataframe(df.head(5))
+
+
+df = import_data()
+merged_data = gdf.merge(df, left_on='MNIMI', right_on='Maakond') 
+merged_data["Loomulik iive"] = merged_data["Mehed Loomulik iive"] + merged_data["Naised Loomulik iive"]
+plot(get_data_for_year(merged_data, 2017))
