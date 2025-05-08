@@ -1,18 +1,13 @@
 import streamlit as st
+import requests
 import pandas as pd
+from io import StringIO
+import json
 import geopandas as gpd
 import matplotlib.pyplot as plt
-import requests
-import json
-from io import StringIO
 
-# --- API constants ---
 STATISTIKAAMETI_API_URL = "https://andmed.stat.ee/api/v1/et/stat/RV032"
 
-# --- GeoJSON local path ---
-GEOJSON_FILE = "maakonnad.geojson"  # Ensure this file is in the same directory
-
-# --- JSON payload ---
 JSON_PAYLOAD_STR = """{
   "query": [
     {
@@ -42,49 +37,48 @@ JSON_PAYLOAD_STR = """{
   }
 }"""
 
-# --- Data loading functions ---
+geojson = "maakonnad.geojson"
+
 @st.cache_data
 def import_data():
     headers = {'Content-Type': 'application/json'}
-    payload = json.loads(JSON_PAYLOAD_STR)
-    response = requests.post(STATISTIKAAMETI_API_URL, json=payload, headers=headers)
+    parsed_payload = json.loads(JSON_PAYLOAD_STR)
+    response = requests.post(STATISTIKAAMETI_API_URL, json=parsed_payload, headers=headers)
+
     if response.status_code == 200:
         text = response.content.decode('utf-8-sig')
-        return pd.read_csv(StringIO(text))
+        df = pd.read_csv(StringIO(text))
+        return df
     else:
-        st.error(f"Data fetch failed: {response.status_code}")
+        st.error(f"Failed with status code: {response.status_code}")
         return pd.DataFrame()
 
 @st.cache_data
 def import_geojson():
-    return gpd.read_file(GEOJSON_FILE)
+    return gpd.read_file(geojson)
 
-# --- Merge and plotting ---
-def merge_data(api_df, geo_df, year):
-    year_df = api_df[api_df["Aasta"] == int(year)]
-    grouped = year_df.groupby("Maakond")["Loomulik iive"].sum().reset_index()
-    grouped["ADM1_NO"] = grouped["Maakond"].astype(int)
-    geo_df["ADM1_NO"] = geo_df["ADM1_NO"].astype(int)
-    merged = geo_df.merge(grouped, on="ADM1_NO")
-    return merged
+def get_data_for_year(df, year):
+    return df[df["Aasta"] == year]
 
-def plot_map(gdf, year):
-    fig, ax = plt.subplots(1, 1, figsize=(10, 7))
-    gdf.plot(column='Loomulik iive', ax=ax, legend=True, cmap='viridis', edgecolor='black',
-             legend_kwds={'label': "Loomulik iive", 'shrink': 0.6})
-    ax.set_title(f"Loomulik iive maakonniti ({year})", fontsize=15)
-    ax.axis('off')
+def main():
+    st.title("Loomulik iive maakonniti")
+
+    year = st.selectbox("Vali aasta", list(range(2014, 2024)))
+
+    df = import_data()
+    gdf = import_geojson()
+
+    year_df = get_data_for_year(df, year)
+    
+    # Rename or adjust merge column names as needed
+    merged = gdf.merge(year_df, left_on="MNIMI", right_on="Maakond", how="left")  # Adjust this if needed
+
+    st.subheader(f"Loomulik iive {year}")
+    
+    fig, ax = plt.subplots(figsize=(12, 8))
+    merged.plot(column="Loomulik iive", ax=ax, legend=True, cmap="viridis", legend_kwds={"label": "Loomulik iive"})
+    plt.axis("off")
     st.pyplot(fig)
 
-# --- Streamlit app UI ---
-st.title("Eesti Statistika: Loomulik iive Maakonniti")
-
-df = import_data()
-gdf = import_geojson()
-
-if not df.empty and not gdf.empty:
-    year = st.selectbox("Vali aasta:", sorted(df["Aasta"].unique(), reverse=True))
-    merged_gdf = merge_data(df, gdf, year)
-    plot_map(merged_gdf, year)
-else:
-    st.warning("Andmete või geoandmete laadimine ebaõnnestus.")
+if __name__ == "__main__":
+    main()
