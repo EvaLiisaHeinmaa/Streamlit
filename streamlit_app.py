@@ -5,12 +5,11 @@ from io import StringIO
 import json
 import geopandas as gpd
 import matplotlib.pyplot as plt
-import os
 
 st.title("Estonian Population Natural Growth by County")
 
 STATISTIKAAMETI_API_URL = "https://andmed.stat.ee/api/v1/et/stat/RV032"
-GEOJSON_FILE = "maakonnad.geojson"  # Path to your local geojson file
+GEOJSON_FILE = "maakonnad.geojson"
 
 JSON_PAYLOAD_STR = """ {
   "query": [
@@ -73,6 +72,7 @@ JSON_PAYLOAD_STR = """ {
 
 @st.cache_data
 def import_data():
+    """Fetch data from Statistics Estonia API"""
     headers = {
         'Content-Type': 'application/json'
     }
@@ -86,13 +86,6 @@ def import_data():
         st.success("Data successfully retrieved!")
         text = response.content.decode('utf-8-sig')
         df = pd.read_csv(StringIO(text))
-
-        # --- Debugging: Print columns of the raw data ---
-        st.write("Columns in raw data (df):", df.columns.tolist())
-        st.write("Sample data (first 5 rows):")
-        st.dataframe(df.head())
-        # --- End Debugging ---
-        
         return df
     else:
         st.error(f"Failed to retrieve data: {response.status_code}")
@@ -101,28 +94,82 @@ def import_data():
 
 @st.cache_data
 def import_geojson():
+    """Load GeoJSON file"""
     try:
-        # Check if file exists
-        if not os.path.exists(GEOJSON_FILE):
-            st.error(f"GeoJSON file not found: {GEOJSON_FILE}")
-            st.info("Make sure the file is in the same directory as your Streamlit app.")
-            return None
-        
         with st.spinner('Loading geographic data...'):
             gdf = gpd.read_file(GEOJSON_FILE)
-            
-            # --- Debugging: Print columns of the GeoJSON data ---
-            st.write("Columns in GeoJSON (gdf):", gdf.columns.tolist())
-            # --- End Debugging ---
-            
             return gdf
     except Exception as e:
         st.error(f"Error loading GeoJSON file: {e}")
         return None
 
-def process_data_and_calculate_natural_growth(df):
-    """Process the data from Statistics Estonia and calculate natural growth."""
-    # First, examine the actual column names to determine the structure
-    st.write("Data structure analysis:")
+def get_data_for_year(df, year):
+    """Filter data for a specific year"""
+    if df is not None:
+        year_data = df[df.Aasta == year]
+        return year_data
+    return None
+
+def create_plot(df, year):
+    """Create a choropleth map for the selected year"""
+    if df is None or len(df) == 0:
+        return None
+        
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
     
-    # Check if we have sex
+    df.plot(column='Loomulik iive', 
+            ax=ax,
+            legend=True,
+            cmap='viridis',
+            legend_kwds={'label': "Loomulik iive"})
+    
+    plt.title(f'Loomulik iive maakonniti aastal {year}')
+    plt.axis('off')
+    plt.tight_layout()
+    
+    return fig
+
+# Main app flow
+df = import_data()
+gdf = import_geojson()
+
+if df is not None and gdf is not None:
+    # Merge the data with the geodataframe
+    merged_data = gdf.merge(df, left_on='MNIMI', right_on='Maakond')
+    
+    # Calculate the total natural growth
+    merged_data["Loomulik iive"] = merged_data["Mehed Loomulik iive"] + merged_data["Naised Loomulik iive"]
+    
+    # Display some basic info about the data
+    st.subheader("Data Overview")
+    st.write(f"Data contains years from {merged_data['Aasta'].min()} to {merged_data['Aasta'].max()}")
+    st.write(f"Geographic data loaded with {len(gdf)} counties")
+    
+    # Year selection
+    years = sorted(merged_data['Aasta'].unique())
+    selected_year = st.selectbox("Select Year", years, index=len(years)-1)  # Default to latest year
+    
+    # Get data for selected year
+    year_data = get_data_for_year(merged_data, selected_year)
+    
+    # Create and display the plot
+    fig = create_plot(year_data, selected_year)
+    if fig:
+        st.pyplot(fig)
+    else:
+        st.warning("No data available for the selected year.")
+    
+    # Show the data for the selected year
+    with st.expander("View Data Table"):
+        st.dataframe(year_data)
+    
+    # Add download button for the selected year's data
+    csv = year_data.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="Download data as CSV",
+        data=csv,
+        file_name=f"population_growth_{selected_year}.csv",
+        mime="text/csv"
+    )
+else:
+    st.warning("Please make sure all data files are available before proceeding.")
