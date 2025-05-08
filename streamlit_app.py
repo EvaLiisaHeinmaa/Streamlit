@@ -6,13 +6,13 @@ import requests
 import json
 from io import StringIO
 
-# --- Constants ---
+# --- API constants ---
 STATISTIKAAMETI_API_URL = "https://andmed.stat.ee/api/v1/et/stat/RV032"
-@st.cache_data
-def import_geojson():
-    return gpd.read_file("maakonnad.geojson")
 
-# --- JSON payload to query the API ---
+# --- GeoJSON local path ---
+GEOJSON_FILE = "maakonnad.geojson"  # Ensure this file is in the same directory
+
+# --- JSON payload ---
 JSON_PAYLOAD_STR = """{
   "query": [
     {
@@ -42,7 +42,7 @@ JSON_PAYLOAD_STR = """{
   }
 }"""
 
-# --- Functions ---
+# --- Data loading functions ---
 @st.cache_data
 def import_data():
     headers = {'Content-Type': 'application/json'}
@@ -52,20 +52,18 @@ def import_data():
         text = response.content.decode('utf-8-sig')
         return pd.read_csv(StringIO(text))
     else:
-        st.error(f"Failed to load data: {response.status_code}")
+        st.error(f"Data fetch failed: {response.status_code}")
         return pd.DataFrame()
 
 @st.cache_data
 def import_geojson():
-    return gpd.read_file(GEOJSON_URL)
+    return gpd.read_file(GEOJSON_FILE)
 
+# --- Merge and plotting ---
 def merge_data(api_df, geo_df, year):
-    # Filter and group API data
     year_df = api_df[api_df["Aasta"] == int(year)]
     grouped = year_df.groupby("Maakond")["Loomulik iive"].sum().reset_index()
     grouped["ADM1_NO"] = grouped["Maakond"].astype(int)
-
-    # Prepare GeoJSON and merge
     geo_df["ADM1_NO"] = geo_df["ADM1_NO"].astype(int)
     merged = geo_df.merge(grouped, on="ADM1_NO")
     return merged
@@ -78,7 +76,7 @@ def plot_map(gdf, year):
     ax.axis('off')
     st.pyplot(fig)
 
-# --- Streamlit UI ---
+# --- Streamlit app UI ---
 st.title("Eesti Statistika: Loomulik iive Maakonniti")
 
 df = import_data()
