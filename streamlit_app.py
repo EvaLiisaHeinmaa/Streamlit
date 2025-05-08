@@ -11,6 +11,7 @@ st.title("Estonian Population Statistics")
 
 # Constants
 STATISTIKAAMETI_API_URL = "https://andmed.stat.ee/api/v1/et/stat/RV032"
+GEOJSON_URL = "https://gist.githubusercontent.com/nutiteq/1ab8f24f9a6ad2bb47da/raw/5a1e14a9d7cac15efe885dfa8199664679c6b1ab/maakonnad.geojson"
 
 JSON_PAYLOAD_STR = """ {
   "query": [
@@ -70,7 +71,6 @@ JSON_PAYLOAD_STR = """ {
   }
 }
 """
-geojson = "maakonnad.geojson"
     
 def import_data():
     headers = {
@@ -92,41 +92,50 @@ def import_data():
         st.text(response.text)
         return pd.DataFrame()
 
-def import_geojson():
+def import_geojson_from_github():
     try:
-        with st.spinner('Loading geographic data...'):
-            gdf = gpd.read_file(geojson)
-        return gdf
+        with st.spinner('Loading geographic data from GitHub...'):
+            # Fetch GeoJSON directly from GitHub Gist
+            response = requests.get(GEOJSON_URL)
+            response.raise_for_status()  # Raise exception for HTTP errors
+            
+            # Read GeoJSON from response content
+            gdf = gpd.read_file(StringIO(response.text))
+            
+            st.success("Map data successfully loaded!")
+            return gdf
     except Exception as e:
         st.error(f"Error loading geographic data: {str(e)}")
-        st.write("Note: If you're having issues with the GeoJSON file, try finding a smaller version.")
         return None
 
 def get_data_for_year(df, year):
     year_data = df[df.Aasta==year]
     return year_data
 
-def create_plot(df, gdf, year):
+def create_plot(df, gdf, year, metric="Loomulik iive"):
     # Get data for selected year
     year_data = get_data_for_year(df, year)
     
+    # Prepare data for merging
+    # You'll need to adjust this based on your actual data structure
+    # This assumes your GeoJSON has county names that match your data
+    
+    # Example: Prepare data to merge with GeoJSON
+    # First, check the column names in both dataframes
+    st.write("GeoJSON columns:", gdf.columns.tolist())
+    
+    # Create a figure
     fig, ax = plt.subplots(1, 1, figsize=(12, 8))
     
-    # Plot the data
-    # Note: You may need to adjust this depending on how your data needs to be joined with the GeoJSON
-    merged_data = gdf.copy()
-    # This is a placeholder - you'll need to adjust how the data is merged with the GeoJSON
-    # merged_data = gdf.merge(year_data, left_on='COUNTY_NAME', right_on='Maakond')
-    
-    merged_data.plot(
-        column='Loomulik iive', 
+    # For demonstration, just plot the GeoJSON counties
+    # You'll need to adjust this to merge with your actual data
+    gdf.plot(
         ax=ax,
-        legend=True,
-        cmap='viridis',
-        legend_kwds={'label': "Loomulik iive"}
+        color='lightblue',
+        edgecolor='black'
     )
     
-    plt.title(f'Loomulik iive maakonniti aastal {year}')
+    plt.title(f'Estonian Counties {year}')
     plt.axis('off')
     plt.tight_layout()
     
@@ -141,30 +150,23 @@ selected_year = st.sidebar.selectbox(
 
 # Load the data
 st.write("## Estonian Population Data")
-st.write("Loading data, please wait...")
 
 df = import_data()
 
-# About the GeoJSON issue
-st.write("## About the Map")
-st.info("""
-Note: This app requires a GeoJSON file for Estonian counties. 
-If you're having trouble with a large file, consider:
-1. Finding a smaller version of Estonian county boundaries
-2. Using a simplification tool like mapshaper.org
-3. Using an alternative source like GADM or Natural Earth Data
-""")
+# Load GeoJSON from GitHub
+gdf = import_geojson_from_github()
 
-# Try to load GeoJSON if available
-try:
-    gdf = import_geojson()
-    if gdf is not None:
-        st.write("## Population Map")
-        fig = create_plot(df, gdf, selected_year)
-        st.pyplot(fig)
-except Exception as e:
-    st.error(f"Could not create map: {str(e)}")
-    st.write("Map display is unavailable. Please check your GeoJSON file.")
+# Display map if GeoJSON loaded successfully
+if gdf is not None:
+    st.write("## Population Map")
+    
+    # Display the raw GeoJSON data for debugging
+    st.write("### GeoJSON Preview (first few rows)")
+    st.dataframe(gdf.head())
+    
+    # Create and display the map
+    fig = create_plot(df, gdf, selected_year)
+    st.pyplot(fig)
 
 # Display data table
 st.write("## Data Table")
@@ -177,3 +179,4 @@ else:
 # Footer
 st.write("---")
 st.write("Data source: Statistics Estonia")
+st.write("Map data: [GitHub Gist by nutiteq](https://gist.github.com/nutiteq/1ab8f24f9a6ad2bb47da)")
