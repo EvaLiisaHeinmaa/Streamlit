@@ -8,7 +8,9 @@ from io import StringIO
 
 # --- Constants ---
 STATISTIKAAMETI_API_URL = "https://andmed.stat.ee/api/v1/et/stat/RV032"
-GEOJSON_URL = "https://gist.githubusercontent.com/nutiteq/1ab8f24f9a6ad2bb47da/raw/maakonnad.json"
+@st.cache_data
+def import_geojson():
+    return gpd.read_file("maakonnad.geojson")
 
 # --- JSON payload to query the API ---
 JSON_PAYLOAD_STR = """{
