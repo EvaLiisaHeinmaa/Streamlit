@@ -118,9 +118,22 @@ def create_plot(gdf, data_year, selected_year):
     if gdf is None or data_year is None:
         return None
     
+    # Debugging: Print column names before merging
+    st.write("Columns in GeoDataFrame (gdf):", gdf.columns.tolist())
+    st.write("Columns in Year Data (data_year):", data_year.columns.tolist())
+    
     # Merge the data with the geodataframe
     # You may need to adjust the column names based on your data structure
     merged_data = gdf.merge(data_year, left_on='MNIMI', right_on='Maakond', how='left')
+    
+    # Debugging: Print column names after merging
+    st.write("Columns in Merged Data:", merged_data.columns.tolist())
+    
+    # Check if 'Loomulik iive' exists in merged_data
+    if 'Loomulik iive' not in merged_data.columns:
+        st.error("The column 'Loomulik iive' is not present in the merged data.")
+        st.write("Please check the merge operation and column names.")
+        return None
     
     fig, ax = plt.subplots(1, 1, figsize=(12, 8))
     
